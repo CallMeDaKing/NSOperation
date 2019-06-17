@@ -14,6 +14,9 @@
 @end
 
 @implementation ViewController
+{
+    dispatch_semaphore_t semaphoreLock;
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -44,7 +47,9 @@
     // 13 关于资源竞争问题  抢票
     //[self TicketsStatusNotSafe];
     // 14 线程安全
-    [self initTicketStatusSave];
+    //[self initTicketStatusSave];
+    // 15 GCD 信号量 实现线程安全
+    [self useGCDBuyTickets];
     
 }
 
@@ -427,6 +432,40 @@
     }
 }
 
+// 线程安全
+- (void)useGCDBuyTickets
+{
+    semaphoreLock = dispatch_semaphore_create(1);
+    self.ticketsCount = 50;
+    
+    // 售票窗口1
+    dispatch_queue_t queue1 = dispatch_queue_create("test1", DISPATCH_QUEUE_SERIAL);
+    // 售票窗口2
+    dispatch_queue_t queue2 = dispatch_queue_create("test2", DISPATCH_QUEUE_CONCURRENT);
+    
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(queue1, ^{
+        [weakSelf saleTicketUseGCDSemaphore];
+    });
+ 
+    dispatch_async(queue2, ^{
+        [weakSelf saleTicketUseGCDSemaphore];
+    });
+}
 
-
+- (void)saleTicketUseGCDSemaphore
+{
+    while (1) {
+        dispatch_semaphore_wait(semaphoreLock, DISPATCH_TIME_FOREVER);
+        
+        if (self.ticketsCount >= 0) {
+            self.ticketsCount --;
+            NSLog(@"%@", [NSString stringWithFormat:@"剩余票数：%ld 窗口：%@", (long)self.ticketsCount, [NSThread currentThread]]);
+        } else {
+            NSLog(@"票已经售完");
+            dispatch_semaphore_signal(semaphoreLock);
+        }
+        dispatch_semaphore_signal(semaphoreLock);
+    }
+}
 @end
